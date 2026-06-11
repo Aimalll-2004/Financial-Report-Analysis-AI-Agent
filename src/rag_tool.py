@@ -12,7 +12,7 @@ db = FAISS.load_local(
     allow_dangerous_deserialization=True
 )
 
-retriever = db.as_retriever(search_kwargs={"k": 10})
+retriever = db.as_retriever(search_kwargs={"k": 15})
 
 llm = Ollama(model="llama3.1:8b")
 

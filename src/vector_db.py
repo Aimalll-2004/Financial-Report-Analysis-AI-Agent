@@ -7,7 +7,7 @@ all_docs = []
 
 #PDF loader
 pdf_loader = DirectoryLoader(
-    "/documents",
+    "../documents",
     glob="**/*.pdf",
     loader_cls=PyPDFLoader
 )
@@ -15,7 +15,7 @@ all_docs.extend(pdf_loader.load())
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=1500,
-    chunk_overlap=200
+    chunk_overlap=250
 )
 
 docs = splitter.split_documents(all_docs)
