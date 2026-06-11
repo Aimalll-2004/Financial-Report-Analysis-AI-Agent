@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
+langgraph
+sentence-transformers
+faiss-cpu
+pypdf
+numpy
+pydantic
