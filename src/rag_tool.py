@@ -16,52 +16,125 @@ retriever = db.as_retriever(search_kwargs={"k": 15})
 
 llm = Ollama(model="llama3.1:8b")
 
+def list_indexed_reports() -> str:
+    docs = list(db.docstore._dict.values())
+
+    reports = {}
+
+    for doc in docs:
+        source_file = doc.metadata.get("source_file", doc.metadata.get("source", "Unknown"))
+        report_type_hint = doc.metadata.get("report_type_hint", "Unknown")
+
+        key = (source_file, report_type_hint)
+        reports[key] = reports.get(key, 0) + 1
+
+    output = "| Source file | Report type hint | Indexed chunks/pages |\n"
+    output += "|---|---|---|\n"
+
+    for (source_file, report_type_hint), count in sorted(reports.items()):
+        output += f"| {source_file} | {report_type_hint} | {count} |\n"
+
+    return output
 
 def rag_answer(question: str) -> str:
+    # Direct metadata listing without asking the LLM
+    if "list indexed reports" in question.lower() or "list all source filenames" in question.lower():
+        return list_indexed_reports()
+
     retrieved_docs = retriever.invoke(question)
 
-    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    context_parts = []
+
+    for i, doc in enumerate(retrieved_docs, start=1):
+        source_file = doc.metadata.get("source_file", doc.metadata.get("source", "Unknown source"))
+        page = doc.metadata.get("page", "Unknown page")
+        report_type = doc.metadata.get("report_type_hint", "Unknown report type")
+
+        context_parts.append(
+            f"""
+[Source {i}]
+File: {source_file}
+Page: {page}
+Report type hint: {report_type}
+
+Content:
+{doc.page_content}
+"""
+        )
+
+    context = "\n\n".join(context_parts)
 
     prompt = f"""
 You are a Financial Report Analysis AI Agent.
 
-You must use ONLY the provided context from the uploaded OEM financial reports.
-Do not use outside knowledge, internet data, assumptions, or memory.
+You analyze uploaded company financial reports.
 
-Your task is to extract financial KPIs from the provided reports and create an executive summary.
+You must use ONLY the provided context from the uploaded reports.
+Do not use internet data, outside knowledge, assumptions, or memory.
 
-Rules:
-- If a value is not available in a quarterly report, write "Not Reported".
-- If a value is not disclosed at all, write "N/A".
+Your job:
+- identify financial KPIs from annual, full-year, quarterly, and interim reports
+- handle different company terminology
+- handle different languages where possible
+- extract numbers exactly as reported
+- keep units exactly as shown
+- clearly mark missing data
+
+Important rules:
+- If a value is not available in a quarterly/interim report, write "Not Reported".
+- If a value is not disclosed anywhere in the provided context, write "N/A".
 - If the exact requested metric is not found, use the closest equivalent company-specific KPI.
-- If you use an equivalent KPI, clearly mention it in a short note.
+- If you use an equivalent KPI, explain this in a short note.
 - Do not invent numbers.
-- Keep units exactly as shown in the reports, for example EUR million, EUR billion, %, or per share.
-- If possible, mention the source report or page context for important values.
+- For important values, mention the source file and page number when available.
 
-Required output:
-Create an executive summary table with these rows:
-1. Company name
-2. Revenue
-3. EBIT / Operating Result
-4. Operating margin = EBIT divided by Revenue
-5. Cash Metric, meaning the company-preferred core cash KPI
-6. Net liquidity / liquidity indicator
-7. Return on capital metric, meaning the company’s value-based KPI
-8. Cost of Capital / hurdle concept, only where disclosed
-9. EPS & dividend per share
-10. Market cap if share value would be 100 EUR/share
+Financial terminology examples:
 
-The table should compare:
-- Full-year 2025 data
-- Latest quarterly data
+Revenue may also appear as:
+- sales
+- group revenues
+- Umsatzerlöse
 
-for all 3 companies.
+EBIT / Operating Result may also appear as:
+- operating result
+- profit before financial result
+- operatives Ergebnis
 
-After the table, add a short note explaining:
-- which KPIs were replaced by equivalent company-specific metrics
-- which values were Not Reported
-- which values were N/A
+Operating margin may also appear as:
+- EBIT margin
+- return on sales
+- operating return on sales
+- operative Umsatzrendite
+
+Cash metric may also appear as:
+- free cash flow
+- industrial free cash flow
+- net cash flow
+- Netto-Cashflow
+- cash flow before interest and taxes
+- CFBIT
+
+Net liquidity may also appear as:
+- net liquidity
+- industrial net liquidity
+- net cash position
+- liquidity indicator
+- Nettoliquidität
+
+Return on capital may also appear as:
+- ROCE
+- ROIC
+- RONA
+- return on capital employed
+- return on invested capital
+- value contribution
+- return on sales / return on equity where used as company-specific KPI
+
+EPS and dividend may also appear as:
+- earnings per share
+- Ergebnis je Aktie
+- dividend per share
+- Dividende je Aktie
 
 Context:
 {context}
